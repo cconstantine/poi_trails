@@ -43,7 +43,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             camera_enabled: false,
-            trails_enabled: false,
+            trails_enabled: true,
             threshold: DEFAULT_THRESHOLD,
             intensity_gain: DEFAULT_INTENSITY_GAIN,
             fade_seconds: DEFAULT_FADE_SECONDS,

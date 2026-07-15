@@ -4,7 +4,7 @@ pub const DEFAULT_THRESHOLD: f32 = 0.6;
 pub const DEFAULT_FADE_SECONDS: f32 = 1.0;
 pub const DEFAULT_DIM_FACTOR: f32 = 0.35;
 pub const DEFAULT_INTENSITY_GAIN: f32 = 1.0;
-pub const DEFAULT_MOTION_GATE: bool = false;
+pub const DEFAULT_MOTION_GATE: bool = true;
 pub const DEFAULT_MOTION_SENSITIVITY: f32 = 0.5;
 pub const DEFAULT_BACKGROUND_SECONDS: f32 = 4.0;
 
@@ -239,6 +239,7 @@ mod tests {
     #[test]
     fn bright_pixel_decays_geometrically() {
         let mut proc = TrailsProcessor::new(1, 1);
+        proc.motion_gate = false;
         proc.threshold = 0.5;
         proc.fade_seconds = 1.0;
         proc.dim_factor = 0.0;
@@ -270,6 +271,7 @@ mod tests {
     #[test]
     fn sub_threshold_pixels_stay_at_dimmed_background() {
         let mut proc = TrailsProcessor::new(1, 1);
+        proc.motion_gate = false;
         proc.threshold = 0.9;
         proc.dim_factor = 0.0;
         let dim = solid_frame(1, 1, [100, 100, 100]); // luminance ~0.39, below threshold
@@ -286,6 +288,7 @@ mod tests {
     #[test]
     fn clear_zeroes_displayed() {
         let mut proc = TrailsProcessor::new(2, 2);
+        proc.motion_gate = false;
         proc.threshold = 0.1;
         let bright = solid_frame(2, 2, [255, 255, 255]);
         let mut out = [0u8; 16];
@@ -304,6 +307,7 @@ mod tests {
     #[test]
     fn sustained_bright_pixel_does_not_blow_out() {
         let mut proc = TrailsProcessor::new(1, 1);
+        proc.motion_gate = false;
         proc.threshold = 0.1;
         proc.dim_factor = 0.0;
         proc.intensity_gain = 1.0;
@@ -321,6 +325,7 @@ mod tests {
     #[test]
     fn brightening_is_instant_dimming_is_gradual() {
         let mut proc = TrailsProcessor::new(1, 1);
+        proc.motion_gate = false;
         proc.threshold = 0.5;
         proc.dim_factor = 0.0;
         proc.fade_seconds = 1.0;
