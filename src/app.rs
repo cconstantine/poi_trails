@@ -59,6 +59,9 @@ pub struct PoiTrailsApp {
     pub(crate) mode: Mode,
     pub(crate) mirror_enabled: bool,
     pub(crate) trails: TrailsProcessor,
+    /// When false the side panel is hidden and only a small floating "show
+    /// controls" button remains, for a clean full-window/fullscreen view.
+    pub(crate) show_controls: bool,
     texture: Option<egui::TextureHandle>,
     composite_buf: Vec<u8>,
 
@@ -66,6 +69,10 @@ pub struct PoiTrailsApp {
     camera: CameraState,
     #[cfg(target_arch = "wasm32")]
     pub(crate) selected_device: Option<String>,
+    /// True while we've hidden controls *and* entered browser fullscreen, so we
+    /// can restore the controls when the browser leaves fullscreen (e.g. Esc).
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) immersive: bool,
 
     #[cfg(not(target_arch = "wasm32"))]
     sim_time: f64,
@@ -101,12 +108,15 @@ impl PoiTrailsApp {
             mode,
             mirror_enabled: true,
             trails,
+            show_controls: true,
             texture: None,
             composite_buf: vec![0; DEFAULT_WIDTH * DEFAULT_HEIGHT * 4],
             #[cfg(target_arch = "wasm32")]
             camera,
             #[cfg(target_arch = "wasm32")]
             selected_device: None,
+            #[cfg(target_arch = "wasm32")]
+            immersive: false,
             #[cfg(not(target_arch = "wasm32"))]
             sim_time: 0.0,
         };
@@ -155,7 +165,8 @@ impl PoiTrailsApp {
             Mode::Live => self.composite_buf.copy_from_slice(&frame.rgba),
             Mode::Trails => {
                 self.trails.resize(w, h);
-                self.trails.process_frame(frame, fps, &mut self.composite_buf);
+                self.trails
+                    .process_frame(frame, fps, &mut self.composite_buf);
             }
         }
 
@@ -181,6 +192,13 @@ impl PoiTrailsApp {
     #[cfg(target_arch = "wasm32")]
     fn update_wasm(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+
+        // If the browser left fullscreen (e.g. the user pressed Esc) while we
+        // were immersive, bring the controls back so they aren't stuck hidden.
+        if self.immersive && !crate::fullscreen::is_active() {
+            self.immersive = false;
+            self.show_controls = true;
+        }
 
         if matches!(self.camera_status(), CameraStatus::Ready) {
             let dt = ctx.input(|i| i.stable_dt).max(1.0 / 240.0);

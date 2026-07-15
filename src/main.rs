@@ -5,6 +5,8 @@ mod video_frame;
 
 #[cfg(target_arch = "wasm32")]
 mod camera;
+#[cfg(target_arch = "wasm32")]
+mod fullscreen;
 
 #[cfg(target_arch = "wasm32")]
 fn main() {

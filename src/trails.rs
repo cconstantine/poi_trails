@@ -132,7 +132,11 @@ impl TrailsProcessor {
         // per-pixel buffers (disjoint field borrows) and plain Copy values.
         let motion_gate = self.motion_gate;
         let seed = !self.background_ready;
-        let base_alpha = if motion_gate { self.background_alpha(fps) } else { 0.0 };
+        let base_alpha = if motion_gate {
+            self.background_alpha(fps)
+        } else {
+            0.0
+        };
         // Change threshold for "motion": higher sensitivity lowers the bar.
         let edge0 = (1.0 - self.motion_sensitivity) * 0.5;
         let edge1 = edge0 + 0.1;
@@ -161,7 +165,11 @@ impl TrailsProcessor {
                     bg[1] = g;
                     bg[2] = b;
                 }
-                let diff = (r - bg[0]).abs().max((g - bg[1]).abs()).max((b - bg[2]).abs()) / 255.0;
+                let diff = (r - bg[0])
+                    .abs()
+                    .max((g - bg[1]).abs())
+                    .max((b - bg[2]).abs())
+                    / 255.0;
                 let mf = smoothstep(edge0, edge1, diff);
                 // Blind running-average update: the background always drifts
                 // toward the current frame at `base_alpha`. A briefly-passing
@@ -179,7 +187,11 @@ impl TrailsProcessor {
             // Only bright pixels are source candidates, and then only to the
             // degree they are moving. `source_weight` blends the per-pixel
             // target between the dimmed background and the boosted source.
-            let source_weight = if luminance > threshold { motion_factor } else { 0.0 };
+            let source_weight = if luminance > threshold {
+                motion_factor
+            } else {
+                0.0
+            };
             let gain = dim_factor + source_weight * (intensity_gain - dim_factor);
             let (tr, tg, tb) = (r * gain, g * gain, b * gain);
 
@@ -396,7 +408,10 @@ mod tests {
                 ref_disp[ch] = (c[ch] * g).max(ref_disp[ch] * decay);
                 expected[ch] = ref_disp[ch].clamp(0.0, 255.0) as u8;
             }
-            assert_eq!(out, expected, "gate-off output diverged from legacy formula");
+            assert_eq!(
+                out, expected,
+                "gate-off output diverged from legacy formula"
+            );
         }
     }
 

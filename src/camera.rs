@@ -14,8 +14,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     CanvasRenderingContext2d, HtmlCanvasElement, HtmlVideoElement, MediaDeviceInfo,
-    MediaDeviceKind, MediaStream, MediaStreamConstraints, MediaStreamTrack,
-    MediaTrackConstraints,
+    MediaDeviceKind, MediaStream, MediaStreamConstraints, MediaStreamTrack, MediaTrackConstraints,
 };
 
 use crate::video_frame::{CameraDevice, VideoFrame};
