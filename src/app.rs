@@ -143,6 +143,20 @@ impl PoiTrailsApp {
         self.texture.as_ref()
     }
 
+    /// True when the controls are hidden *and* we're in real fullscreen — the
+    /// view is then just the video, with no restore button (exit via Esc).
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn is_immersive(&self) -> bool {
+        self.immersive
+    }
+
+    /// Native has no browser-fullscreen tracking; keep the restore button so
+    /// the dev preview is never stuck.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn is_immersive(&self) -> bool {
+        false
+    }
+
     fn upload(&mut self, ctx: &egui::Context, width: usize, height: usize) {
         let color_image =
             egui::ColorImage::from_rgba_unmultiplied([width, height], &self.composite_buf);
@@ -254,6 +268,12 @@ impl eframe::App for PoiTrailsApp {
 
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(2)
+    }
+
+    /// Pure black behind everything, so letterbox bars around the video are
+    /// clean black rather than the default dark gray.
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [0.0, 0.0, 0.0, 1.0]
     }
 }
 

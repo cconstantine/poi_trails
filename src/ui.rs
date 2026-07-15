@@ -37,10 +37,12 @@ fn leave_immersive(app: &mut PoiTrailsApp, _ctx: &egui::Context) {
 pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
 
-    if !app.show_controls {
+    // In real fullscreen the view is just the video — no restore button; the
+    // user exits with Esc (which brings the controls back). Only offer the
+    // floating button when controls were hidden *without* going fullscreen.
+    if !app.show_controls && !app.is_immersive() {
         // A single unobtrusive button, floating top-right, to bring everything
-        // back (and leave fullscreen). Always reachable even after the browser
-        // drops fullscreen on its own.
+        // back. Always reachable even after the browser drops fullscreen.
         egui::Area::new(egui::Id::new("restore_controls"))
             .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-8.0, 8.0))
             .show(&ctx, |ui| {
@@ -290,6 +292,56 @@ fn draw_video(app: &PoiTrailsApp, ui: &mut egui::Ui) {
         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))
     };
 
-    let size = ui.available_size();
-    ui.add(egui::Image::new(texture).uv(uv).fit_to_exact_size(size));
+    // Letterbox: scale the video to fit the available area while keeping its
+    // aspect ratio, then center it. Whatever it doesn't cover stays black.
+    let tex_size = texture.size_vec2();
+    if tex_size.x <= 0.0 || tex_size.y <= 0.0 {
+        return;
+    }
+    let rect = letterbox_rect(tex_size, ui.max_rect());
+    egui::Image::new(texture).uv(uv).paint_at(ui, rect);
+}
+
+/// The largest rect with `content`'s aspect ratio that fits inside `area`,
+/// centered within it (i.e. letterboxed / pillarboxed).
+fn letterbox_rect(content: egui::Vec2, area: egui::Rect) -> egui::Rect {
+    let scale = (area.width() / content.x).min(area.height() / content.y);
+    let size = content * scale;
+    egui::Align2::CENTER_CENTER.align_size_within_rect(size, area)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::letterbox_rect;
+    use eframe::egui::{pos2, vec2, Rect};
+
+    fn approx(a: f32, b: f32) {
+        assert!((a - b).abs() < 1e-3, "{a} != {b}");
+    }
+
+    #[test]
+    fn pillarboxes_wide_area_and_centers() {
+        // 4:3 video into a 1000x500 area -> height-limited, 666.7x500, centered.
+        let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 500.0));
+        let r = letterbox_rect(vec2(640.0, 480.0), area);
+        approx(r.height(), 500.0);
+        approx(r.width(), 500.0 * 640.0 / 480.0);
+        // Aspect ratio preserved and centered within the area.
+        approx(r.width() / r.height(), 640.0 / 480.0);
+        approx(r.center().x, area.center().x);
+        approx(r.center().y, area.center().y);
+        // Fully contained.
+        assert!(r.min.x >= area.min.x - 1e-3 && r.max.x <= area.max.x + 1e-3);
+    }
+
+    #[test]
+    fn letterboxes_tall_area() {
+        // 4:3 video into a 400x1000 area -> width-limited, 400x300, centered.
+        let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 1000.0));
+        let r = letterbox_rect(vec2(640.0, 480.0), area);
+        approx(r.width(), 400.0);
+        approx(r.height(), 300.0);
+        approx(r.center().y, area.center().y);
+        assert!(r.min.y >= area.min.y - 1e-3 && r.max.y <= area.max.y + 1e-3);
+    }
 }
