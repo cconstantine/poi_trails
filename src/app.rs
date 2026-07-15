@@ -1,6 +1,7 @@
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+use crate::delay::DelayBuffer;
 use crate::trails::{
     TrailsProcessor, DEFAULT_BACKGROUND_SECONDS, DEFAULT_DIM_FACTOR, DEFAULT_FADE_SECONDS,
     DEFAULT_INTENSITY_GAIN, DEFAULT_MOTION_GATE, DEFAULT_MOTION_SENSITIVITY, DEFAULT_THRESHOLD,
@@ -37,6 +38,7 @@ struct Settings {
     motion_gate: bool,
     motion_sensitivity: f32,
     background_seconds: f32,
+    delay_seconds: f32,
 }
 
 impl Default for Settings {
@@ -51,6 +53,7 @@ impl Default for Settings {
             motion_gate: DEFAULT_MOTION_GATE,
             motion_sensitivity: DEFAULT_MOTION_SENSITIVITY,
             background_seconds: DEFAULT_BACKGROUND_SECONDS,
+            delay_seconds: 0.0,
         }
     }
 }
@@ -59,6 +62,9 @@ pub struct PoiTrailsApp {
     pub(crate) mode: Mode,
     pub(crate) mirror_enabled: bool,
     pub(crate) trails: TrailsProcessor,
+    /// Playback delay in seconds (0 = live). See [`DelayBuffer`].
+    pub(crate) delay_seconds: f32,
+    delay: DelayBuffer,
     /// When false the side panel is hidden and only a small floating "show
     /// controls" button remains, for a clean full-window/fullscreen view.
     pub(crate) show_controls: bool,
@@ -108,6 +114,8 @@ impl PoiTrailsApp {
             mode,
             mirror_enabled: true,
             trails,
+            delay_seconds: settings.delay_seconds,
+            delay: DelayBuffer::new(),
             show_controls: true,
             texture: None,
             composite_buf: vec![0; DEFAULT_WIDTH * DEFAULT_HEIGHT * 4],
@@ -169,6 +177,17 @@ impl PoiTrailsApp {
         }
     }
 
+    /// The frame to display: delayed if the delay slider is up, otherwise the
+    /// live frame (and the buffer is freed while delay is off).
+    fn frame_to_show(&mut self, live: VideoFrame, dt: f32) -> VideoFrame {
+        if self.delay_seconds > 0.05 {
+            self.delay.tick(&live, dt, self.delay_seconds)
+        } else {
+            self.delay.clear();
+            live
+        }
+    }
+
     fn process_and_upload(&mut self, ctx: &egui::Context, frame: &VideoFrame, fps: f32) {
         let (w, h) = (frame.width, frame.height);
         if self.composite_buf.len() != w * h * 4 {
@@ -219,7 +238,8 @@ impl PoiTrailsApp {
             let fps = 1.0 / dt;
             if let Some(frame) = self.camera.poll_frame() {
                 let frame = frame.clone();
-                self.process_and_upload(&ctx, &frame, fps);
+                let shown = self.frame_to_show(frame, dt);
+                self.process_and_upload(&ctx, &shown, fps);
             }
         }
 
@@ -229,12 +249,13 @@ impl PoiTrailsApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn update_native(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        let dt = (ctx.input(|i| i.stable_dt).max(1.0 / 240.0)) as f64;
-        self.sim_time += dt;
-        let fps = (1.0 / dt) as f32;
+        let dt = ctx.input(|i| i.stable_dt).max(1.0 / 240.0);
+        self.sim_time += dt as f64;
+        let fps = 1.0 / dt;
 
         let frame = synthetic_frame(DEFAULT_WIDTH, DEFAULT_HEIGHT, self.sim_time);
-        self.process_and_upload(&ctx, &frame, fps);
+        let shown = self.frame_to_show(frame, dt);
+        self.process_and_upload(&ctx, &shown, fps);
 
         crate::ui::draw(self, ui);
     }
@@ -262,6 +283,7 @@ impl eframe::App for PoiTrailsApp {
             motion_gate: self.trails.motion_gate,
             motion_sensitivity: self.trails.motion_sensitivity,
             background_seconds: self.trails.background_seconds,
+            delay_seconds: self.delay_seconds,
         };
         eframe::set_value(storage, eframe::APP_KEY, &settings);
     }

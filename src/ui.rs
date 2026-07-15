@@ -115,6 +115,25 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                  Applies in both modes.",
                     );
 
+                ui.add(
+                    egui::Slider::new(
+                        &mut app.delay_seconds,
+                        0.0..=crate::delay::MAX_DELAY_SECONDS,
+                    )
+                    .text("Delay (s)"),
+                )
+                .on_hover_text(
+                    "Show the video from a few seconds ago, so you can do a move and \
+                     then look up to review it. 0 = live.",
+                );
+                if app.delay_seconds > 0.05 {
+                    caption(
+                        ui,
+                        "Showing the past — perform your move, then watch it here a \
+                         moment later.",
+                    );
+                }
+
                 if app.mode == Mode::Trails {
                     ui.separator();
                     ui.label("Trails settings");

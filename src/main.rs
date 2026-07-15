@@ -1,4 +1,5 @@
 mod app;
+mod delay;
 mod trails;
 mod ui;
 mod video_frame;
