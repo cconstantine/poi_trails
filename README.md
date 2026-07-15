@@ -28,25 +28,20 @@ trunk serve --open                  # http://127.0.0.1:8080
 `cargo run` opens a native window with a synthetic test pattern (no camera),
 handy for iterating on UI/trail behavior without a browser.
 
-## Deploy (Cloudflare Pages)
+## Deploy (GitHub Pages)
 
-Static output goes to `dist/` via `trunk build --release`. Cloudflare's build
-image doesn't ship Rust, so the build command installs the toolchain itself.
+`.github/workflows/deploy.yml` builds with trunk and publishes `dist/` to
+GitHub Pages on every push to `main`. One-time setup: in the repo, go to
+**Settings → Pages → Build and deployment → Source** and select
+**GitHub Actions**.
 
-In the Cloudflare Pages dashboard, connect this GitHub repo and set:
-
-- **Framework preset:** None
-- **Build command:**
-  ```sh
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -t wasm32-unknown-unknown && . "$HOME/.cargo/env" && curl -sL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C "$HOME/.cargo/bin" && trunk build --release
-  ```
-- **Build output directory:** `dist`
-
-Served at the site root, so no `--public-url` override is needed. Every push to
-the connected branch triggers a rebuild and deploy.
+The site is served from a subpath (`https://<user>.github.io/poi_trails/`), so
+the workflow builds with `trunk build --release --public-url /poi_trails/`. If
+you rename the repo or use a custom/root domain, update that flag accordingly
+(root domain → `--public-url /`).
 
 Any static host works too (`trunk build --release` then serve `dist/` over
-HTTPS): GitHub Pages, Netlify, Vercel, etc.
+HTTPS): Cloudflare Pages, Netlify, Vercel, etc.
 
 [egui]: https://github.com/emilk/egui
 [eframe]: https://github.com/emilk/egui/tree/master/crates/eframe
