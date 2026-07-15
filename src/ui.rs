@@ -137,7 +137,7 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                         .current_resolution()
                         .map(|(w, h)| format!(" ({w}×{h})"))
                         .unwrap_or_default();
-                    caption(ui, &format!("Delay buffer: ~{mb:.0} MB of RAM{res}."));
+                    caption(ui, &format!("Delay buffer: ~{mb:.0} MB{res}."));
                 }
 
                 if app.mode == Mode::Trails {
@@ -213,6 +213,8 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                             .clicked()
                         {
                             app.trails.reset_background();
+                            #[cfg(target_arch = "wasm32")]
+                            crate::gpu::reset_background();
                         }
                     }
 
@@ -223,6 +225,8 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                         .clicked()
                     {
                         app.trails.clear();
+                        #[cfg(target_arch = "wasm32")]
+                        crate::gpu::clear_trails();
                     }
                 }
             });
@@ -354,6 +358,38 @@ fn device_label(device: &crate::video_frame::CameraDevice) -> String {
     }
 }
 
+/// Web: the composited frame lives in a GPU texture; draw it via a paint
+/// callback, letterboxed and optionally mirrored.
+#[cfg(target_arch = "wasm32")]
+fn draw_video(app: &PoiTrailsApp, ui: &mut egui::Ui) {
+    let Some((sw, sh)) = crate::gpu::source_dims() else {
+        ui.centered_and_justified(|ui| {
+            ui.label("Waiting for camera…");
+        });
+        return;
+    };
+    if sw <= 0 || sh <= 0 {
+        return;
+    }
+
+    let lb = letterbox_rect(egui::vec2(sw as f32, sh as f32), ui.max_rect());
+
+    // The letterbox rect in physical pixels (top-left origin); the GPU code
+    // flips Y to GL's bottom-left origin itself.
+    let ppp = ui.ctx().pixels_per_point();
+    let rect_px = [
+        (lb.min.x * ppp).round() as i32,
+        (lb.min.y * ppp).round() as i32,
+        (lb.width() * ppp).round() as i32,
+        (lb.height() * ppp).round() as i32,
+    ];
+
+    ui.painter()
+        .add(crate::gpu::display_callback(lb, rect_px, app.mirror_enabled));
+}
+
+/// Native: the composited frame is an egui texture uploaded from the CPU.
+#[cfg(not(target_arch = "wasm32"))]
 fn draw_video(app: &PoiTrailsApp, ui: &mut egui::Ui) {
     let Some(texture) = app.texture() else {
         ui.centered_and_justified(|ui| {

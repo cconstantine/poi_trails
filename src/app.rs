@@ -6,6 +6,7 @@ use crate::trails::{
     TrailsProcessor, DEFAULT_BACKGROUND_SECONDS, DEFAULT_DIM_FACTOR, DEFAULT_FADE_SECONDS,
     DEFAULT_INTENSITY_GAIN, DEFAULT_MOTION_GATE, DEFAULT_MOTION_SENSITIVITY, DEFAULT_THRESHOLD,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use crate::video_frame::VideoFrame;
 
 #[cfg(target_arch = "wasm32")]
@@ -99,7 +100,10 @@ pub struct PoiTrailsApp {
     /// When false the side panel is hidden and only a small floating "show
     /// controls" button remains, for a clean full-window/fullscreen view.
     pub(crate) show_controls: bool,
+    // Native-only CPU compositing target; web composites on the GPU.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     texture: Option<egui::TextureHandle>,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     composite_buf: Vec<u8>,
 
     #[cfg(target_arch = "wasm32")]
@@ -163,8 +167,16 @@ impl PoiTrailsApp {
         };
 
         #[cfg(target_arch = "wasm32")]
-        if settings.camera_enabled {
-            app.request_camera(None);
+        {
+            // Share eframe's WebGL2 context for GPU frame processing. WebGL2 is
+            // guaranteed under the glow backend, so this should always succeed;
+            // log and continue if not.
+            if let Err(err) = crate::gpu::init() {
+                log::error!("GPU pipeline init failed: {err}");
+            }
+            if settings.camera_enabled {
+                app.request_camera(None);
+            }
         }
 
         app
@@ -180,6 +192,8 @@ impl PoiTrailsApp {
         false
     }
 
+    // Native-only: web composites on the GPU and draws via a paint callback.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn texture(&self) -> Option<&egui::TextureHandle> {
         self.texture.as_ref()
     }
@@ -198,6 +212,7 @@ impl PoiTrailsApp {
         false
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn upload(&mut self, ctx: &egui::Context, width: usize, height: usize) {
         let color_image =
             egui::ColorImage::from_rgba_unmultiplied([width, height], &self.composite_buf);
@@ -212,6 +227,7 @@ impl PoiTrailsApp {
 
     /// The frame to display: delayed if the delay slider is up, otherwise the
     /// live frame (and the buffer is freed while delay is off).
+    #[cfg(not(target_arch = "wasm32"))]
     fn frame_to_show(&mut self, live: VideoFrame, dt: f32) -> VideoFrame {
         self.current_resolution = Some((live.width, live.height));
         if self.delay_seconds > 0.05 {
@@ -241,6 +257,7 @@ impl PoiTrailsApp {
         self.current_resolution
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn process_and_upload(&mut self, ctx: &egui::Context, frame: &VideoFrame, fps: f32) {
         let (w, h) = (frame.width, frame.height);
         if self.composite_buf.len() != w * h * 4 {
@@ -301,8 +318,6 @@ impl PoiTrailsApp {
 
     #[cfg(target_arch = "wasm32")]
     fn update_wasm(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-
         // If the browser left fullscreen (e.g. the user pressed Esc) while we
         // were immersive, bring the controls back so they aren't stuck hidden.
         if self.immersive && !crate::fullscreen::is_active() {
@@ -311,12 +326,28 @@ impl PoiTrailsApp {
         }
 
         if matches!(self.camera_status(), CameraStatus::Ready) {
-            let dt = ctx.input(|i| i.stable_dt).max(1.0 / 240.0);
-            let fps = 1.0 / dt;
-            if let Some(frame) = self.camera.poll_frame() {
-                let frame = frame.clone();
-                let shown = self.frame_to_show(frame, dt);
-                self.process_and_upload(&ctx, &shown, fps);
+            // Upload the current frame straight to the GPU (no CPU readback),
+            // then composite entirely on the GPU: delay ring -> trails -> display.
+            if let Some((w, h)) = crate::gpu::upload_video(self.camera.video()) {
+                self.current_resolution = Some((w as usize, h as usize));
+                let dt = ui.ctx().input(|i| i.stable_dt).max(1.0 / 240.0);
+                // Delay applies to both modes: pick the (possibly delayed) frame.
+                crate::gpu::set_delay(self.delay_seconds, dt);
+                match self.mode {
+                    Mode::Trails => {
+                        crate::gpu::process_trails(crate::gpu::TrailsParams {
+                            threshold: self.trails.threshold,
+                            intensity_gain: self.trails.intensity_gain,
+                            dim_factor: self.trails.dim_factor,
+                            fade_seconds: self.trails.fade_seconds,
+                            motion_gate: self.trails.motion_gate,
+                            motion_sensitivity: self.trails.motion_sensitivity,
+                            background_seconds: self.trails.background_seconds,
+                            dt,
+                        });
+                    }
+                    Mode::Live => crate::gpu::use_mirror(),
+                }
             }
         }
 

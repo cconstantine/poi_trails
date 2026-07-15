@@ -1,10 +1,10 @@
 //! Webcam capture via `getUserMedia`, wasm/browser only.
 //!
-//! Frames are pulled synchronously each `eframe::App::update()` tick by
-//! drawing the live `<video>` element into a hidden scratch `<canvas>` and
-//! reading its pixels back with `getImageData`. The browser is single
-//! threaded in wasm, so the async permission flow shares state into the
-//! synchronous update loop via `Rc<RefCell<_>>` rather than channels.
+//! Manages the permission flow and keeps the `MediaStream` attached to a hidden
+//! `<video>` element. The GPU pipeline (`gpu.rs`) uploads that video element's
+//! frames straight to a texture, so no pixel readback happens here. The browser
+//! is single threaded in wasm, so async state is shared into the synchronous
+//! update loop via `Rc<RefCell<_>>` rather than channels.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -13,11 +13,11 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    CanvasRenderingContext2d, HtmlCanvasElement, HtmlVideoElement, MediaDeviceInfo,
-    MediaDeviceKind, MediaStream, MediaStreamConstraints, MediaStreamTrack, MediaTrackConstraints,
+    HtmlVideoElement, MediaDeviceInfo, MediaDeviceKind, MediaStream, MediaStreamConstraints,
+    MediaStreamTrack, MediaTrackConstraints,
 };
 
-use crate::video_frame::{CameraDevice, VideoFrame};
+use crate::video_frame::CameraDevice;
 
 #[derive(Clone)]
 pub enum CameraStatus {
@@ -30,13 +30,10 @@ pub enum CameraStatus {
 pub struct CameraState {
     status: Rc<RefCell<CameraStatus>>,
     video: HtmlVideoElement,
-    canvas: HtmlCanvasElement,
-    ctx: CanvasRenderingContext2d,
     stream: Rc<RefCell<Option<MediaStream>>>,
     devices: Rc<RefCell<Vec<CameraDevice>>>,
     /// Camera's max supported (width, height) from `getCapabilities`, once known.
     max_resolution: Rc<RefCell<Option<(u32, u32)>>>,
-    frame: VideoFrame,
 }
 
 impl CameraState {
@@ -51,25 +48,12 @@ impl CameraState {
             .ok_or_else(|| JsValue::from_str("missing #webcam_video element"))?
             .dyn_into::<HtmlVideoElement>()?;
 
-        let canvas = document
-            .get_element_by_id("scratch_canvas")
-            .ok_or_else(|| JsValue::from_str("missing #scratch_canvas element"))?
-            .dyn_into::<HtmlCanvasElement>()?;
-
-        let ctx = canvas
-            .get_context("2d")?
-            .ok_or_else(|| JsValue::from_str("no 2d context"))?
-            .dyn_into::<CanvasRenderingContext2d>()?;
-
         Ok(Self {
             status: Rc::new(RefCell::new(CameraStatus::NotStarted)),
             video,
-            canvas,
-            ctx,
             stream: Rc::new(RefCell::new(None)),
             devices: Rc::new(RefCell::new(Vec::new())),
             max_resolution: Rc::new(RefCell::new(None)),
-            frame: VideoFrame::new(640, 480),
         })
     }
 
@@ -83,6 +67,12 @@ impl CameraState {
 
     pub fn max_resolution(&self) -> Option<(u32, u32)> {
         *self.max_resolution.borrow()
+    }
+
+    /// The hidden `<video>` element the stream renders into — used by the GPU
+    /// pipeline to upload frames directly (no `getImageData` readback).
+    pub fn video(&self) -> &HtmlVideoElement {
+        &self.video
     }
 
     /// Kicks off (or restarts, e.g. to switch device) the async permission +
@@ -123,46 +113,6 @@ impl CameraState {
         });
     }
 
-    /// Pulls the current video frame into an owned RGBA buffer, resizing the
-    /// scratch canvas/internal buffer to match the camera's negotiated
-    /// resolution the first time it becomes known. Returns `None` until a
-    /// stream is ready and has produced at least one decoded frame.
-    pub fn poll_frame(&mut self) -> Option<&VideoFrame> {
-        if !matches!(*self.status.borrow(), CameraStatus::Ready) {
-            return None;
-        }
-
-        let vw = self.video.video_width();
-        let vh = self.video.video_height();
-        if vw == 0 || vh == 0 {
-            return None;
-        }
-        let (vw, vh) = (vw as usize, vh as usize);
-
-        if self.canvas.width() as usize != vw || self.canvas.height() as usize != vh {
-            self.canvas.set_width(vw as u32);
-            self.canvas.set_height(vh as u32);
-        }
-        if self.frame.width != vw || self.frame.height != vh {
-            self.frame = VideoFrame::new(vw, vh);
-        }
-
-        self.ctx
-            .draw_image_with_html_video_element(&self.video, 0.0, 0.0)
-            .ok()?;
-        let image_data = self
-            .ctx
-            .get_image_data(0.0, 0.0, vw as f64, vh as f64)
-            .ok()?;
-        let clamped = image_data.data();
-        let bytes: &[u8] = &clamped;
-        if bytes.len() != self.frame.rgba.len() {
-            return None;
-        }
-        self.frame.rgba.copy_from_slice(bytes);
-
-        Some(&self.frame)
-    }
 }
 
 impl Drop for CameraState {

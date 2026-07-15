@@ -22,8 +22,7 @@
 <body>
   <canvas id="the_canvas_id"></canvas>
 
-  <!-- Hidden elements used purely as camera decode/scratch buffers, never shown to the user -->
+  <!-- Hidden video: the MediaStream sink the GPU pipeline uploads frames from. -->
   <video id="webcam_video" autoplay playsinline muted style="display:none;"></video>
-  <canvas id="scratch_canvas" width="640" height="480" style="display:none;"></canvas>
 </body>
 </html>

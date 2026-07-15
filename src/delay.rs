@@ -8,6 +8,10 @@
 //! [`MAX_DELAY_SECONDS`] are kept, and evicted frame buffers are recycled to
 //! avoid per-frame allocation churn.
 
+// CPU delay buffer for the native preview and the reference the GPU delay ring
+// (`gpu.rs`) mirrors; the web build keeps its ring in VRAM instead.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
+
 use std::collections::VecDeque;
 
 use crate::video_frame::VideoFrame;

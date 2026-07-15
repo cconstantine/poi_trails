@@ -1,3 +1,8 @@
+// The CPU trails engine drives the native preview and is the reference the
+// WebGL2 shader (`gpu.rs`) mirrors; the web build composites on the GPU instead,
+// so these items are unused there (the param fields still feed the shader).
+#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
+
 use crate::video_frame::VideoFrame;
 
 pub const DEFAULT_THRESHOLD: f32 = 0.6;

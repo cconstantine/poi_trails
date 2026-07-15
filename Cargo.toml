@@ -25,11 +25,16 @@ web-sys = { version = "0.3", features = [
     "Element",
     "HtmlVideoElement",
     "HtmlCanvasElement",
-    "CanvasRenderingContext2d",
-    "ImageData",
     "Document",
     "Window",
     "DomException",
+    "WebGl2RenderingContext",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlTexture",
+    "WebGlFramebuffer",
+    "WebGlUniformLocation",
+    "WebGlVertexArrayObject",
 ] }
 console_error_panic_hook = "0.1"
 console_log = "1"

@@ -1,3 +1,7 @@
+// `VideoFrame` feeds the native CPU path; the web build uploads to the GPU and
+// doesn't use it (CameraDevice, below, is still used on web).
+#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
+
 #[derive(Clone)]
 pub struct VideoFrame {
     pub width: usize,
@@ -16,6 +20,8 @@ impl VideoFrame {
     }
 }
 
+/// A selectable camera (web only).
+#[cfg(target_arch = "wasm32")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CameraDevice {
     pub device_id: String,
