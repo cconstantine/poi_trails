@@ -36,7 +36,7 @@ pub const RESOLUTION_PRESETS: [(u32, u32); 4] =
 #[cfg(target_arch = "wasm32")]
 pub fn resolution_label(res: Option<(u32, u32)>) -> String {
     match res {
-        None => "Auto".to_string(),
+        None => "Auto (max)".to_string(),
         Some((w, h)) => match h {
             480 => "480p".to_string(),
             720 => "720p".to_string(),

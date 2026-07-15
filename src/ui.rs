@@ -300,9 +300,9 @@ fn draw_camera_controls(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
     }
 }
 
-/// Camera resolution picker. The browser exposes only a supported max (not a
-/// discrete list), so we offer Auto + standard presets up to that max, plus the
-/// camera's native max. Higher resolution means a larger delay buffer.
+/// Camera resolution picker. "Auto" requests the camera's native maximum; the
+/// presets are lower fixed resolutions (a smaller delay buffer / less GPU work).
+/// The browser only exposes a supported max, so presets above it are hidden.
 #[cfg(target_arch = "wasm32")]
 fn draw_quality_picker(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
     use crate::app::{resolution_label, RESOLUTION_PRESETS};
@@ -313,7 +313,10 @@ fn draw_quality_picker(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
     egui::ComboBox::from_label("Quality")
         .selected_text(resolution_label(current))
         .show_ui(ui, |ui| {
-            if ui.selectable_label(current.is_none(), "Auto").clicked() {
+            if ui
+                .selectable_label(current.is_none(), resolution_label(None))
+                .clicked()
+            {
                 app.set_capture_resolution(None);
             }
             for preset in RESOLUTION_PRESETS {
@@ -327,21 +330,11 @@ fn draw_quality_picker(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                     app.set_capture_resolution(Some(preset));
                 }
             }
-            // The camera's exact native max, if it isn't already one of the presets.
-            if let Some(m) = max {
-                if !RESOLUTION_PRESETS.contains(&m)
-                    && ui
-                        .selectable_label(current == Some(m), format!("Max ({}×{})", m.0, m.1))
-                        .clicked()
-                {
-                    app.set_capture_resolution(Some(m));
-                }
-            }
         })
         .response
         .on_hover_text(
-            "Camera resolution. Higher is sharper but uses more memory for the \
-             delay buffer.",
+            "Camera resolution. Auto uses the camera's max — sharper but more \
+             memory for the delay buffer and more GPU work.",
         );
 
     if let Some((mw, mh)) = max {

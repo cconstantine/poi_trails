@@ -134,21 +134,18 @@ async fn start_stream(
     let constraints = MediaStreamConstraints::new();
     constraints.set_audio(&JsValue::FALSE);
 
-    // A plain integer width/height is treated as `ideal` by the constraints
-    // spec — the browser gets as close as the camera allows.
-    if device_id.is_some() || resolution.is_some() {
-        let track_constraints = MediaTrackConstraints::new();
-        if let Some(id) = device_id {
-            track_constraints.set_device_id(&JsValue::from_str(&id));
-        }
-        if let Some((w, h)) = resolution {
-            track_constraints.set_width_i32(w as i32);
-            track_constraints.set_height_i32(h as i32);
-        }
-        constraints.set_video(&track_constraints);
-    } else {
-        constraints.set_video(&JsValue::TRUE);
+    let track_constraints = MediaTrackConstraints::new();
+    if let Some(id) = device_id {
+        track_constraints.set_device_id(&JsValue::from_str(&id));
     }
+    // A plain integer width/height is treated as `ideal` by the constraints
+    // spec. For a specific quality we request it directly; for Auto we request
+    // an ideal larger than any camera so the browser negotiates down to the
+    // camera's native maximum (rather than the ~640x480 getUserMedia default).
+    let (w, h) = resolution.unwrap_or((7680, 4320));
+    track_constraints.set_width_i32(w as i32);
+    track_constraints.set_height_i32(h as i32);
+    constraints.set_video(&track_constraints);
 
     let promise = media_devices.get_user_media_with_constraints(&constraints)?;
     let stream: MediaStream = JsFuture::from(promise).await?.dyn_into()?;
