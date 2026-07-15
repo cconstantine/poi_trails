@@ -34,6 +34,8 @@ pub struct CameraState {
     ctx: CanvasRenderingContext2d,
     stream: Rc<RefCell<Option<MediaStream>>>,
     devices: Rc<RefCell<Vec<CameraDevice>>>,
+    /// Camera's max supported (width, height) from `getCapabilities`, once known.
+    max_resolution: Rc<RefCell<Option<(u32, u32)>>>,
     frame: VideoFrame,
 }
 
@@ -66,6 +68,7 @@ impl CameraState {
             ctx,
             stream: Rc::new(RefCell::new(None)),
             devices: Rc::new(RefCell::new(Vec::new())),
+            max_resolution: Rc::new(RefCell::new(None)),
             frame: VideoFrame::new(640, 480),
         })
     }
@@ -78,24 +81,34 @@ impl CameraState {
         self.devices.borrow().clone()
     }
 
+    pub fn max_resolution(&self) -> Option<(u32, u32)> {
+        *self.max_resolution.borrow()
+    }
+
     /// Kicks off (or restarts, e.g. to switch device) the async permission +
     /// stream-acquisition flow. Safe to call again while already `Ready` to
     /// switch cameras; the previous stream's tracks are stopped once the new
     /// one is confirmed live.
-    pub fn request_camera(&self, device_id: Option<String>) {
+    pub fn request_camera(&self, device_id: Option<String>, resolution: Option<(u32, u32)>) {
         *self.status.borrow_mut() = CameraStatus::Requesting;
 
         let status = Rc::clone(&self.status);
         let stream_slot = Rc::clone(&self.stream);
         let devices_slot = Rc::clone(&self.devices);
+        let max_res_slot = Rc::clone(&self.max_resolution);
         let video = self.video.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
-            match start_stream(&video, device_id).await {
+            // Release any existing stream *before* requesting the new one. A
+            // camera can only run one configuration at a time, so requesting a
+            // new resolution while the old track is still live gets clamped to
+            // the resolution already open — the camera must be free to reopen.
+            if let Some(old) = stream_slot.borrow_mut().take() {
+                stop_all_tracks(&old);
+            }
+            match start_stream(&video, device_id, resolution).await {
                 Ok(stream) => {
-                    if let Some(old) = stream_slot.borrow_mut().take() {
-                        stop_all_tracks(&old);
-                    }
+                    *max_res_slot.borrow_mut() = read_max_resolution(&stream);
                     *stream_slot.borrow_mut() = Some(stream);
                     *status.borrow_mut() = CameraStatus::Ready;
 
@@ -163,19 +176,28 @@ impl Drop for CameraState {
 async fn start_stream(
     video: &HtmlVideoElement,
     device_id: Option<String>,
+    resolution: Option<(u32, u32)>,
 ) -> Result<MediaStream, JsValue> {
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("no global window"))?;
     let media_devices = window.navigator().media_devices()?;
 
     let constraints = MediaStreamConstraints::new();
     constraints.set_audio(&JsValue::FALSE);
-    match device_id {
-        Some(id) => {
-            let track_constraints = MediaTrackConstraints::new();
+
+    // A plain integer width/height is treated as `ideal` by the constraints
+    // spec — the browser gets as close as the camera allows.
+    if device_id.is_some() || resolution.is_some() {
+        let track_constraints = MediaTrackConstraints::new();
+        if let Some(id) = device_id {
             track_constraints.set_device_id(&JsValue::from_str(&id));
-            constraints.set_video(&track_constraints);
         }
-        None => constraints.set_video(&JsValue::TRUE),
+        if let Some((w, h)) = resolution {
+            track_constraints.set_width_i32(w as i32);
+            track_constraints.set_height_i32(h as i32);
+        }
+        constraints.set_video(&track_constraints);
+    } else {
+        constraints.set_video(&JsValue::TRUE);
     }
 
     let promise = media_devices.get_user_media_with_constraints(&constraints)?;
@@ -205,6 +227,28 @@ async fn enumerate_video_devices() -> Result<Vec<CameraDevice>, JsValue> {
         }
     }
     Ok(out)
+}
+
+/// Reads the camera's maximum supported (width, height) from the video track's
+/// `getCapabilities()`. Called via `js_sys::Reflect` rather than the typed
+/// web-sys binding, which is gated behind the unstable-apis build flag. Returns
+/// `None` if the browser doesn't support `getCapabilities` (e.g. older Safari)
+/// or doesn't report a width/height range — callers fall back to plain presets.
+fn read_max_resolution(stream: &MediaStream) -> Option<(u32, u32)> {
+    let track = stream.get_video_tracks().get(0);
+    if track.is_undefined() || track.is_null() {
+        return None;
+    }
+    let get_caps = js_sys::Reflect::get(&track, &JsValue::from_str("getCapabilities")).ok()?;
+    let get_caps = get_caps.dyn_ref::<js_sys::Function>()?;
+    let caps = get_caps.call0(&track).ok()?;
+
+    let max_of = |key: &str| -> Option<u32> {
+        let range = js_sys::Reflect::get(&caps, &JsValue::from_str(key)).ok()?;
+        let max = js_sys::Reflect::get(&range, &JsValue::from_str("max")).ok()?;
+        max.as_f64().map(|v| v as u32)
+    };
+    Some((max_of("width")?, max_of("height")?))
 }
 
 fn stop_all_tracks(stream: &MediaStream) {

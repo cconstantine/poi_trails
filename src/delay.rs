@@ -14,9 +14,12 @@ use crate::video_frame::VideoFrame;
 
 /// Longest delay the user can dial in.
 pub const MAX_DELAY_SECONDS: f32 = 5.0;
-/// Cap on how often frames are stored. Bounds the buffer to
-/// `MAX_DELAY_SECONDS * STORE_FPS` frames regardless of the display refresh rate.
+/// Cap on how often frames are stored, so a fast display doesn't store
+/// duplicate frames of a slower camera.
 pub const STORE_FPS: f64 = 30.0;
+/// A little history kept beyond the requested delay, so the exact frame at
+/// `now - delay` is always available despite timing jitter.
+const EVICT_MARGIN_SECONDS: f64 = 0.25;
 
 struct Stamped {
     /// Seconds since this buffer started, monotonically increasing.
@@ -72,10 +75,10 @@ impl DelayBuffer {
             self.last_store = self.now;
         }
 
-        // Evict frames older than the max window (keep at least one).
-        while self.frames.len() > 1
-            && (self.now - self.frames.front().unwrap().t) > MAX_DELAY_SECONDS as f64
-        {
+        // Only keep as much history as the current delay needs, so memory
+        // scales with the delay setting rather than always holding the max.
+        let keep_window = delay_seconds.max(0.0) as f64 + EVICT_MARGIN_SECONDS;
+        while self.frames.len() > 1 && (self.now - self.frames.front().unwrap().t) > keep_window {
             let old = self.frames.pop_front().unwrap();
             self.pool.push(old.frame);
         }
@@ -120,13 +123,14 @@ mod tests {
         let mut buf = DelayBuffer::new();
         let dt = 1.0 / STORE_FPS as f32; // one stored frame per tick
 
-        // Feed 60 frames tagged 0..=59 (2 seconds at 30 fps), no delay yet.
+        // Feed 60 frames tagged 0..=59 (2 seconds at 30 fps) with a 1s delay so
+        // the needed history is retained.
         for tag in 0..60u8 {
-            buf.tick(&tagged(tag), dt, 0.0);
+            buf.tick(&tagged(tag), dt, 1.0);
         }
-        // Store tag 60 and ask for a 1s delay. Frame `i` is stored at
-        // t = (i+1)/30; now = 61/30, so target = now - 1s = 31/30, whose
-        // newest frame at-or-before is tag 30.
+        // Store tag 60 at a 1s delay. Frame `i` is stored at t = (i+1)/30;
+        // now = 61/30, so target = now - 1s = 31/30, whose newest frame
+        // at-or-before is tag 30.
         let shown = buf.tick(&tagged(60), dt, 1.0);
         assert_eq!(shown.rgba[0], 30, "expected a ~1s-old frame");
     }
@@ -155,17 +159,19 @@ mod tests {
     }
 
     #[test]
-    fn buffer_is_bounded_to_the_max_window() {
+    fn buffer_is_bounded_to_the_delay_window() {
         let mut buf = DelayBuffer::new();
         let dt = 1.0 / STORE_FPS as f32;
-        // Feed 20 seconds worth; only ~5s (150 frames) should be retained.
+        let delay = 2.0;
+        // Feed 20 seconds worth; only ~delay seconds should be retained.
         for tag in 0..600u32 {
-            buf.tick(&tagged((tag % 256) as u8), dt, 0.0);
+            buf.tick(&tagged((tag % 256) as u8), dt, delay);
         }
-        let max_frames = (MAX_DELAY_SECONDS as f64 * STORE_FPS).ceil() as usize + 2;
+        // Comfortably above (delay + margin) * fps, well under the 20s fed.
+        let max_frames = ((delay as f64 + 1.0) * STORE_FPS).ceil() as usize;
         assert!(
             buf.frames.len() <= max_frames,
-            "buffer grew to {} frames, expected <= {}",
+            "buffer grew to {} frames, expected <= {} for a {delay}s delay",
             buf.frames.len(),
             max_frames
         );

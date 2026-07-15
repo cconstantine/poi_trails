@@ -132,6 +132,12 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                         "Showing the past — perform your move, then watch it here a \
                          moment later.",
                     );
+                    let mb = app.projected_delay_bytes() as f64 / (1024.0 * 1024.0);
+                    let res = app
+                        .current_resolution()
+                        .map(|(w, h)| format!(" ({w}×{h})"))
+                        .unwrap_or_default();
+                    caption(ui, &format!("Delay buffer: ~{mb:.0} MB of RAM{res}."));
                 }
 
                 if app.mode == Mode::Trails {
@@ -273,6 +279,8 @@ fn draw_camera_controls(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                         }
                     });
             }
+
+            draw_quality_picker(app, ui);
         }
         CameraStatus::Error(msg) => {
             ui.colored_label(egui::Color32::RED, format!("Camera error: {msg}"));
@@ -285,6 +293,55 @@ fn draw_camera_controls(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                 app.request_camera(None);
             }
         }
+    }
+}
+
+/// Camera resolution picker. The browser exposes only a supported max (not a
+/// discrete list), so we offer Auto + standard presets up to that max, plus the
+/// camera's native max. Higher resolution means a larger delay buffer.
+#[cfg(target_arch = "wasm32")]
+fn draw_quality_picker(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
+    use crate::app::{resolution_label, RESOLUTION_PRESETS};
+
+    let max = app.camera_max_resolution();
+    let current = app.capture_resolution();
+
+    egui::ComboBox::from_label("Quality")
+        .selected_text(resolution_label(current))
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(current.is_none(), "Auto").clicked() {
+                app.set_capture_resolution(None);
+            }
+            for preset in RESOLUTION_PRESETS {
+                // Skip presets the camera can't reach (when its max is known).
+                let fits = max.map_or(true, |(mw, mh)| preset.0 <= mw && preset.1 <= mh);
+                if fits
+                    && ui
+                        .selectable_label(current == Some(preset), resolution_label(Some(preset)))
+                        .clicked()
+                {
+                    app.set_capture_resolution(Some(preset));
+                }
+            }
+            // The camera's exact native max, if it isn't already one of the presets.
+            if let Some(m) = max {
+                if !RESOLUTION_PRESETS.contains(&m)
+                    && ui
+                        .selectable_label(current == Some(m), format!("Max ({}×{})", m.0, m.1))
+                        .clicked()
+                {
+                    app.set_capture_resolution(Some(m));
+                }
+            }
+        })
+        .response
+        .on_hover_text(
+            "Camera resolution. Higher is sharper but uses more memory for the \
+             delay buffer.",
+        );
+
+    if let Some((mw, mh)) = max {
+        caption(ui, &format!("Camera supports up to {mw}×{mh}."));
     }
 }
 

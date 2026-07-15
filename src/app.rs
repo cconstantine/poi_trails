@@ -23,6 +23,30 @@ pub enum Mode {
     Trails,
 }
 
+/// Standard capture resolutions offered when the camera can reach them. The
+/// browser only exposes a supported width/height *range* (via
+/// `getCapabilities`), not a discrete list, so we present these presets up to
+/// the camera's reported maximum, plus the camera's native max itself.
+#[cfg(target_arch = "wasm32")]
+pub const RESOLUTION_PRESETS: [(u32, u32); 4] =
+    [(640, 480), (1280, 720), (1920, 1080), (2560, 1440)];
+
+/// Human label for a requested capture resolution (`None` = Auto).
+#[cfg(target_arch = "wasm32")]
+pub fn resolution_label(res: Option<(u32, u32)>) -> String {
+    match res {
+        None => "Auto".to_string(),
+        Some((w, h)) => match h {
+            480 => "480p".to_string(),
+            720 => "720p".to_string(),
+            1080 => "1080p".to_string(),
+            1440 => "1440p".to_string(),
+            2160 => "4K".to_string(),
+            _ => format!("{w}×{h}"),
+        },
+    }
+}
+
 /// Persisted to `localStorage` on web (a file on native) via eframe's
 /// built-in `Storage`. Deliberately excludes `mirror_enabled`, which the app
 /// always starts with on.
@@ -39,6 +63,8 @@ struct Settings {
     motion_sensitivity: f32,
     background_seconds: f32,
     delay_seconds: f32,
+    /// Requested capture resolution (None = Auto / browser default).
+    capture_resolution: Option<(u32, u32)>,
 }
 
 impl Default for Settings {
@@ -54,6 +80,7 @@ impl Default for Settings {
             motion_sensitivity: DEFAULT_MOTION_SENSITIVITY,
             background_seconds: DEFAULT_BACKGROUND_SECONDS,
             delay_seconds: 0.0,
+            capture_resolution: None,
         }
     }
 }
@@ -65,6 +92,10 @@ pub struct PoiTrailsApp {
     /// Playback delay in seconds (0 = live). See [`DelayBuffer`].
     pub(crate) delay_seconds: f32,
     delay: DelayBuffer,
+    /// Requested camera capture resolution (drives delay-buffer memory). None = Auto.
+    capture_resolution: Option<(u32, u32)>,
+    /// Actual resolution of the most recent frame, for display readouts.
+    current_resolution: Option<(usize, usize)>,
     /// When false the side panel is hidden and only a small floating "show
     /// controls" button remains, for a clean full-window/fullscreen view.
     pub(crate) show_controls: bool,
@@ -116,6 +147,8 @@ impl PoiTrailsApp {
             trails,
             delay_seconds: settings.delay_seconds,
             delay: DelayBuffer::new(),
+            capture_resolution: settings.capture_resolution,
+            current_resolution: None,
             show_controls: true,
             texture: None,
             composite_buf: vec![0; DEFAULT_WIDTH * DEFAULT_HEIGHT * 4],
@@ -180,12 +213,32 @@ impl PoiTrailsApp {
     /// The frame to display: delayed if the delay slider is up, otherwise the
     /// live frame (and the buffer is freed while delay is off).
     fn frame_to_show(&mut self, live: VideoFrame, dt: f32) -> VideoFrame {
+        self.current_resolution = Some((live.width, live.height));
         if self.delay_seconds > 0.05 {
             self.delay.tick(&live, dt, self.delay_seconds)
         } else {
             self.delay.clear();
             live
         }
+    }
+
+    /// Estimated RAM the delay buffer needs at the current delay + resolution.
+    /// This is the steady-state target (it doesn't ramp as the buffer fills),
+    /// so the readout snaps to the size for the chosen delay. 0 when delay is off.
+    pub(crate) fn projected_delay_bytes(&self) -> usize {
+        if self.delay_seconds <= 0.05 {
+            return 0;
+        }
+        let (w, h) = self
+            .current_resolution
+            .unwrap_or((DEFAULT_WIDTH, DEFAULT_HEIGHT));
+        let frames = (self.delay_seconds as f64 * crate::delay::STORE_FPS).ceil() as usize;
+        frames * w * h * 4
+    }
+
+    /// Actual resolution of the most recent frame, if any.
+    pub(crate) fn current_resolution(&self) -> Option<(usize, usize)> {
+        self.current_resolution
     }
 
     fn process_and_upload(&mut self, ctx: &egui::Context, frame: &VideoFrame, fps: f32) {
@@ -219,7 +272,31 @@ impl PoiTrailsApp {
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn request_camera(&mut self, device_id: Option<String>) {
         self.selected_device = device_id.clone();
-        self.camera.request_camera(device_id);
+        self.camera
+            .request_camera(device_id, self.capture_resolution);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn capture_resolution(&self) -> Option<(u32, u32)> {
+        self.capture_resolution
+    }
+
+    /// The camera's maximum supported resolution, once discovered (via
+    /// `getCapabilities`); `None` if unknown/unsupported.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn camera_max_resolution(&self) -> Option<(u32, u32)> {
+        self.camera.max_resolution()
+    }
+
+    /// Change the requested capture resolution and restart the stream to apply it.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn set_capture_resolution(&mut self, resolution: Option<(u32, u32)>) {
+        if self.capture_resolution != resolution {
+            self.capture_resolution = resolution;
+            // A resolution change makes the trail/delay buffers stale.
+            self.delay.clear();
+            self.request_camera(self.selected_device.clone());
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -284,6 +361,7 @@ impl eframe::App for PoiTrailsApp {
             motion_sensitivity: self.trails.motion_sensitivity,
             background_seconds: self.trails.background_seconds,
             delay_seconds: self.delay_seconds,
+            capture_resolution: self.capture_resolution,
         };
         eframe::set_value(storage, eframe::APP_KEY, &settings);
     }
