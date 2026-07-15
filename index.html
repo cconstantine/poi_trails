@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Poi Trails</title>
+  <link data-trunk rel="rust" data-wasm-opt="2" />
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas#the_canvas_id {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="the_canvas_id"></canvas>
+
+  <!-- Hidden elements used purely as camera decode/scratch buffers, never shown to the user -->
+  <video id="webcam_video" autoplay playsinline muted style="display:none;"></video>
+  <canvas id="scratch_canvas" width="640" height="480" style="display:none;"></canvas>
+</body>
+</html>
