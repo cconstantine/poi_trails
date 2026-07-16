@@ -258,9 +258,10 @@ impl PoiTrailsApp {
     }
 
     /// Restore all effect/view settings to their defaults — Mode, mirror flip,
-    /// Delay, and every trails / background-suppression control. Intentionally
-    /// leaves the camera and quality selection alone (resetting quality would
-    /// restart the stream, and it's a hardware/performance choice).
+    /// Delay, and every trails / background-suppression control — and clear the
+    /// accumulated trail + re-learn the background for a clean slate.
+    /// Intentionally leaves the camera and quality selection alone (resetting
+    /// quality would restart the stream, and it's a hardware/performance choice).
     pub(crate) fn reset_to_defaults(&mut self) {
         self.mode = Mode::Trails;
         self.mirror_enabled = true;
@@ -272,6 +273,14 @@ impl PoiTrailsApp {
         self.trails.motion_gate = DEFAULT_MOTION_GATE;
         self.trails.motion_sensitivity = DEFAULT_MOTION_SENSITIVITY;
         self.trails.background_seconds = DEFAULT_BACKGROUND_SECONDS;
+
+        self.trails.clear();
+        self.trails.reset_background();
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::gpu::clear_trails();
+            crate::gpu::reset_background();
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]

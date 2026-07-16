@@ -204,29 +204,6 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                             "How quickly a light that stops moving is treated as background \
                          and stops trailing.",
                         );
-                        if ui
-                            .button("Reset background")
-                            .on_hover_text(
-                                "Re-learn what's part of the still background right now. \
-                             Use after the scene or lighting changes.",
-                            )
-                            .clicked()
-                        {
-                            app.trails.reset_background();
-                            #[cfg(target_arch = "wasm32")]
-                            crate::gpu::reset_background();
-                        }
-                    }
-
-                    ui.separator();
-                    if ui
-                        .button("Clear trails")
-                        .on_hover_text("Erase the trails currently on screen.")
-                        .clicked()
-                    {
-                        app.trails.clear();
-                        #[cfg(target_arch = "wasm32")]
-                        crate::gpu::clear_trails();
                     }
                 }
 
