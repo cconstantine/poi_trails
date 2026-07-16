@@ -1,5 +1,7 @@
 # Poi Trails
 
+**Try it: https://cconstantine.github.io/poi_trails/**
+
 A client-side (no backend) webcam mirror for practicing poi spinning, with a
 light-trails mode that traces the path of bright poi heads through the air.
 Built in Rust with [egui]/[eframe] (glow/WebGL2), compiled to WebAssembly and
