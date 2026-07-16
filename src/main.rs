@@ -11,6 +11,13 @@ mod fullscreen;
 #[cfg(target_arch = "wasm32")]
 mod gpu;
 
+/// The static "Loading…" placeholder from index.html, shown until the app
+/// starts (or repurposed as an error notice if it can't).
+#[cfg(target_arch = "wasm32")]
+fn loading_element() -> Option<web_sys::Element> {
+    web_sys::window()?.document()?.get_element_by_id("loading")
+}
+
 #[cfg(target_arch = "wasm32")]
 fn main() {
     use wasm_bindgen::JsCast;
@@ -29,14 +36,30 @@ fn main() {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("#the_canvas_id is not a canvas element");
 
-        eframe::WebRunner::new()
+        let result = eframe::WebRunner::new()
             .start(
                 canvas,
                 eframe::WebOptions::default(),
                 Box::new(|cc| Ok(Box::new(app::PoiTrailsApp::new(cc)))),
             )
-            .await
-            .expect("failed to start eframe");
+            .await;
+
+        match result {
+            Ok(()) => {
+                if let Some(el) = loading_element() {
+                    el.remove();
+                }
+            }
+            Err(err) => {
+                log::error!("failed to start eframe: {err:?}");
+                if let Some(el) = loading_element() {
+                    el.set_text_content(Some(
+                        "Failed to start — this app needs WebAssembly and WebGL2. \
+                         Try a current Chrome, Firefox, or Safari.",
+                    ));
+                }
+            }
+        }
     });
 }
 

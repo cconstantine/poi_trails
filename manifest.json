@@ -1,0 +1,18 @@
+{
+  "name": "Poi Trails",
+  "short_name": "Poi Trails",
+  "description": "A webcam mirror for practicing poi spinning, with glowing light trails. Runs entirely in your browser.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

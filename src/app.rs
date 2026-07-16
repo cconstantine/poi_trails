@@ -65,6 +65,9 @@ struct Settings {
     delay_seconds: f32,
     /// Requested capture resolution (None = Auto / browser default).
     capture_resolution: Option<(u32, u32)>,
+    /// Last selected camera device id, so multi-camera users keep their choice
+    /// across visits (device ids are stable per-origin once permission is granted).
+    selected_device: Option<String>,
 }
 
 impl Default for Settings {
@@ -80,6 +83,7 @@ impl Default for Settings {
             background_seconds: DEFAULT_BACKGROUND_SECONDS,
             delay_seconds: 0.0,
             capture_resolution: None,
+            selected_device: None,
         }
     }
 }
@@ -158,7 +162,7 @@ impl PoiTrailsApp {
             #[cfg(target_arch = "wasm32")]
             camera,
             #[cfg(target_arch = "wasm32")]
-            selected_device: None,
+            selected_device: settings.selected_device.clone(),
             #[cfg(target_arch = "wasm32")]
             immersive: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -174,7 +178,7 @@ impl PoiTrailsApp {
                 log::error!("GPU pipeline init failed: {err}");
             }
             if settings.camera_enabled {
-                app.request_camera(None);
+                app.request_camera(app.selected_device.clone());
             }
         }
 
@@ -189,6 +193,16 @@ impl PoiTrailsApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn camera_enabled(&self) -> bool {
         false
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn saved_device(&self) -> Option<String> {
+        self.selected_device.clone()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn saved_device(&self) -> Option<String> {
+        None
     }
 
     // Native-only: web composites on the GPU and draws via a paint callback.
@@ -343,6 +357,16 @@ impl PoiTrailsApp {
 
     #[cfg(target_arch = "wasm32")]
     fn update_wasm(&mut self, ui: &mut egui::Ui) {
+        // Repaint continuously only while frames are flowing. Otherwise poll at
+        // a low rate — enough to pick up async camera-status changes without
+        // burning battery on an idle page.
+        if matches!(self.camera_status(), CameraStatus::Ready) {
+            ui.ctx().request_repaint();
+        } else {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(250));
+        }
+
         // If the browser left fullscreen (e.g. the user pressed Esc) while we
         // were immersive, bring the controls back so they aren't stuck hidden.
         if self.immersive && !crate::fullscreen::is_active() {
@@ -381,6 +405,8 @@ impl PoiTrailsApp {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn update_native(&mut self, ui: &mut egui::Ui) {
+        // The synthetic test pattern animates continuously.
+        ui.ctx().request_repaint();
         let ctx = ui.ctx().clone();
         let dt = ctx.input(|i| i.stable_dt).max(1.0 / 240.0);
         self.sim_time += dt as f64;
@@ -396,8 +422,6 @@ impl PoiTrailsApp {
 
 impl eframe::App for PoiTrailsApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        ui.ctx().request_repaint();
-
         #[cfg(target_arch = "wasm32")]
         self.update_wasm(ui);
 
@@ -417,6 +441,7 @@ impl eframe::App for PoiTrailsApp {
             background_seconds: self.trails.background_seconds,
             delay_seconds: self.delay_seconds,
             capture_resolution: self.capture_resolution,
+            selected_device: self.saved_device(),
         };
         eframe::set_value(storage, eframe::APP_KEY, &settings);
     }

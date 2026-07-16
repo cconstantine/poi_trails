@@ -6,7 +6,7 @@
 //! is single threaded in wasm, so async state is shared into the synchronous
 //! update loop via `Rc<RefCell<_>>` rather than channels.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
@@ -34,6 +34,10 @@ pub struct CameraState {
     devices: Rc<RefCell<Vec<CameraDevice>>>,
     /// Camera's max supported (width, height) from `getCapabilities`, once known.
     max_resolution: Rc<RefCell<Option<(u32, u32)>>>,
+    /// Bumped on every `request_camera`. In-flight flows from an older request
+    /// check it after each await and bail out (stopping their stream) so a
+    /// rapid retry/switch can't leave a stray live stream or clobber newer state.
+    generation: Rc<Cell<u64>>,
 }
 
 impl CameraState {
@@ -54,6 +58,7 @@ impl CameraState {
             stream: Rc::new(RefCell::new(None)),
             devices: Rc::new(RefCell::new(Vec::new())),
             max_resolution: Rc::new(RefCell::new(None)),
+            generation: Rc::new(Cell::new(0)),
         })
     }
 
@@ -88,6 +93,13 @@ impl CameraState {
         let max_res_slot = Rc::clone(&self.max_resolution);
         let video = self.video.clone();
 
+        let my_gen = self.generation.get() + 1;
+        self.generation.set(my_gen);
+        let generation = Rc::clone(&self.generation);
+        // After every await: a newer request may have started meanwhile — if
+        // so, this flow no longer owns the camera; discard its results.
+        let superseded = move || generation.get() != my_gen;
+
         wasm_bindgen_futures::spawn_local(async move {
             // Release any existing stream *before* requesting the new one. A
             // camera can only run one configuration at a time, so requesting a
@@ -96,18 +108,39 @@ impl CameraState {
             if let Some(old) = stream_slot.borrow_mut().take() {
                 stop_all_tracks(&old);
             }
-            match start_stream(&video, device_id, resolution).await {
-                Ok(stream) => {
-                    *max_res_slot.borrow_mut() = read_max_resolution(&stream);
-                    *stream_slot.borrow_mut() = Some(stream);
-                    *status.borrow_mut() = CameraStatus::Ready;
-
-                    if let Ok(list) = enumerate_video_devices().await {
-                        *devices_slot.borrow_mut() = list;
-                    }
-                }
+            let stream = match open_stream(device_id, resolution).await {
+                Ok(stream) => stream,
                 Err(err) => {
+                    if !superseded() {
+                        *status.borrow_mut() = CameraStatus::Error(js_error_to_string(&err));
+                    }
+                    return;
+                }
+            };
+            if superseded() {
+                stop_all_tracks(&stream);
+                return;
+            }
+
+            if let Err(err) = attach_stream(&video, &stream).await {
+                if !superseded() {
                     *status.borrow_mut() = CameraStatus::Error(js_error_to_string(&err));
+                }
+                stop_all_tracks(&stream);
+                return;
+            }
+            if superseded() {
+                stop_all_tracks(&stream);
+                return;
+            }
+
+            *max_res_slot.borrow_mut() = read_max_resolution(&stream);
+            *stream_slot.borrow_mut() = Some(stream);
+            *status.borrow_mut() = CameraStatus::Ready;
+
+            if let Ok(list) = enumerate_video_devices().await {
+                if !superseded() {
+                    *devices_slot.borrow_mut() = list;
                 }
             }
         });
@@ -123,8 +156,10 @@ impl Drop for CameraState {
     }
 }
 
-async fn start_stream(
-    video: &HtmlVideoElement,
+/// Acquire a camera stream via `getUserMedia` (permission prompt included).
+/// Does *not* touch the video element — attaching is a separate step so a
+/// request that loses a race can be discarded without disturbing the winner.
+async fn open_stream(
     device_id: Option<String>,
     resolution: Option<(u32, u32)>,
 ) -> Result<MediaStream, JsValue> {
@@ -137,6 +172,11 @@ async fn start_stream(
     let track_constraints = MediaTrackConstraints::new();
     if let Some(id) = device_id {
         track_constraints.set_device_id(&JsValue::from_str(&id));
+    } else {
+        // Phones: a mirror app wants the front camera. A plain string is an
+        // `ideal` constraint, so desktops and single-camera devices are
+        // unaffected, and an explicit device selection (above) always wins.
+        track_constraints.set_facing_mode(&JsValue::from_str("user"));
     }
     // A plain integer width/height is treated as `ideal` by the constraints
     // spec. For a specific quality we request it directly; for Auto we request
@@ -148,12 +188,14 @@ async fn start_stream(
     constraints.set_video(&track_constraints);
 
     let promise = media_devices.get_user_media_with_constraints(&constraints)?;
-    let stream: MediaStream = JsFuture::from(promise).await?.dyn_into()?;
+    JsFuture::from(promise).await?.dyn_into()
+}
 
-    video.set_src_object(Some(&stream));
+/// Point the hidden video element at `stream` and wait for playback to start.
+async fn attach_stream(video: &HtmlVideoElement, stream: &MediaStream) -> Result<(), JsValue> {
+    video.set_src_object(Some(stream));
     JsFuture::from(video.play()?).await?;
-
-    Ok(stream)
+    Ok(())
 }
 
 async fn enumerate_video_devices() -> Result<Vec<CameraDevice>, JsValue> {

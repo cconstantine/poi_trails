@@ -1,9 +1,24 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <!-- Enforces the privacy promise: no network traffic beyond this origin, the
+       GoatCounter analytics endpoint, and the wasm module itself. script-src
+       needs 'unsafe-inline' for trunk's generated init script and the service
+       worker registration below. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://gc.zgo.at; connect-src 'self' https://poi-trails.goatcounter.com; img-src 'self' data: https://poi-trails.goatcounter.com; style-src 'self' 'unsafe-inline'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Poi Trails</title>
+  <meta name="description" content="A webcam mirror for practicing poi spinning, with glowing light trails. Runs entirely in your browser — video never leaves your device.">
+  <meta name="theme-color" content="#000000">
+  <meta property="og:title" content="Poi Trails">
+  <meta property="og:description" content="A webcam mirror for practicing poi spinning, with glowing light trails. Runs entirely in your browser.">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="manifest" href="manifest.json">
+  <link data-trunk rel="copy-file" href="favicon.svg" />
+  <link data-trunk rel="copy-file" href="manifest.json" />
+  <link data-trunk rel="copy-file" href="sw.js" />
   <link data-trunk rel="rust" data-wasm-opt="2" />
   <style>
     html, body {
@@ -17,12 +32,48 @@
       height: 100%;
       display: block;
     }
+    /* Shown until the wasm app starts (main.rs removes it), so the first
+       paint isn't a bare black page. */
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #999;
+      font: 16px system-ui, sans-serif;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <canvas id="the_canvas_id"></canvas>
 
+  <div id="loading">
+    <p id="loading_text">Loading…</p>
+    <noscript>
+      <style>#loading_text { display: none; }</style>
+      <p>Poi Trails needs JavaScript and WebAssembly enabled to run.</p>
+    </noscript>
+  </div>
+
   <!-- Hidden video: the MediaStream sink the GPU pipeline uploads frames from. -->
   <video id="webcam_video" autoplay playsinline muted style="display:none;"></video>
+
+  <!-- Offline support: cache everything ever fetched, network-first so normal
+       visits always get the newest build. -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) => {
+          console.warn('service worker registration failed:', err);
+        });
+      });
+    }
+  </script>
+
+  <script data-goatcounter="https://poi-trails.goatcounter.com/count"
+          async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>

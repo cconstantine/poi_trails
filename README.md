@@ -11,7 +11,8 @@ served as a static site with [trunk].
   dim.
 - **Suppress static background** — an adaptive background model so bright
   *static* clutter stops trailing while moving poi keep tracing.
-- Settings persist to `localStorage`.
+- Settings (including the chosen camera) persist to `localStorage`.
+- Installable as a PWA; once visited, it keeps working offline.
 
 > The webcam requires a secure context: the app only works over **HTTPS** or
 > `http://localhost` (browsers block `getUserMedia` otherwise).
@@ -43,6 +44,12 @@ you rename the repo or use a custom/root domain, update that flag accordingly
 Any static host works too (`trunk build --release` then serve `dist/` over
 HTTPS): Cloudflare Pages, Netlify, Vercel, etc.
 
+## Analytics
+
+Pageview counts are tracked with [GoatCounter] (no cookies, no personal data).
+Dashboard: https://poi-trails.goatcounter.com
+
 [egui]: https://github.com/emilk/egui
 [eframe]: https://github.com/emilk/egui/tree/master/crates/eframe
 [trunk]: https://trunkrs.dev
+[GoatCounter]: https://www.goatcounter.com

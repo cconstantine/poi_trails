@@ -61,6 +61,28 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
             .resizable(true)
             .default_size(240.0)
             .show(ui, |ui| {
+                egui::Panel::bottom("github_link")
+                    .show_separator_line(true)
+                    .show(ui, |ui| {
+                        ui.add_space(4.0);
+                        ui.vertical_centered(|ui| {
+                            ui.add(
+                                egui::Hyperlink::from_label_and_url(
+                                    "Source on GitHub",
+                                    "https://github.com/cconstantine/poi_trails",
+                                )
+                                .open_in_new_tab(true),
+                            );
+                        });
+                        #[cfg(target_arch = "wasm32")]
+                        caption(
+                            ui,
+                            "Anonymous visit counting only (GoatCounter, no cookies). \
+                             Your video never leaves this device.",
+                        );
+                        ui.add_space(4.0);
+                    });
+
                 ui.heading("Poi Trails");
                 caption(
                     ui,
@@ -234,7 +256,8 @@ fn draw_camera_controls(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                 .on_hover_text("Turn on your webcam. Your browser will ask for permission.")
                 .clicked()
             {
-                app.request_camera(None);
+                // Reuse the camera chosen on a previous visit, if any.
+                app.request_camera(app.selected_device.clone());
             }
             caption(
                 ui,
