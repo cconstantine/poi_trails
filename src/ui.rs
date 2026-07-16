@@ -229,6 +229,19 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                         crate::gpu::clear_trails();
                     }
                 }
+
+                ui.separator();
+                if ui
+                    .button("Reset to defaults")
+                    .on_hover_text(
+                        "Restore Mode, Mirror flip, Delay, and all trail / \
+                         background settings to their defaults. Your camera and \
+                         quality choice are left as-is.",
+                    )
+                    .clicked()
+                {
+                    app.reset_to_defaults();
+                }
             });
     }
 

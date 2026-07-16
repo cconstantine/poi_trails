@@ -257,6 +257,23 @@ impl PoiTrailsApp {
         self.current_resolution
     }
 
+    /// Restore all effect/view settings to their defaults — Mode, mirror flip,
+    /// Delay, and every trails / background-suppression control. Intentionally
+    /// leaves the camera and quality selection alone (resetting quality would
+    /// restart the stream, and it's a hardware/performance choice).
+    pub(crate) fn reset_to_defaults(&mut self) {
+        self.mode = Mode::Trails;
+        self.mirror_enabled = true;
+        self.delay_seconds = 0.0;
+        self.trails.threshold = DEFAULT_THRESHOLD;
+        self.trails.intensity_gain = DEFAULT_INTENSITY_GAIN;
+        self.trails.fade_seconds = DEFAULT_FADE_SECONDS;
+        self.trails.dim_factor = DEFAULT_DIM_FACTOR;
+        self.trails.motion_gate = DEFAULT_MOTION_GATE;
+        self.trails.motion_sensitivity = DEFAULT_MOTION_SENSITIVITY;
+        self.trails.background_seconds = DEFAULT_BACKGROUND_SECONDS;
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn process_and_upload(&mut self, ctx: &egui::Context, frame: &VideoFrame, fps: f32) {
         let (w, h) = (frame.width, frame.height);
