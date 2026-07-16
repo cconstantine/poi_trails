@@ -144,22 +144,6 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                     ui.separator();
                     ui.label("Trails settings");
                     ui.add(
-                        egui::Slider::new(&mut app.trails.threshold, 0.0..=1.0)
-                            .text("Brightness threshold"),
-                    )
-                    .on_hover_text(
-                        "How bright something must be before it leaves a trail. \
-                     Higher = only the brightest lights trail.",
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut app.trails.intensity_gain, 0.1..=2.0)
-                            .text("Brightness boost"),
-                    )
-                    .on_hover_text(
-                        "Makes trails glow brighter than the original light. \
-                     Turn up if trails look too dim.",
-                    );
-                    ui.add(
                         egui::Slider::new(&mut app.trails.fade_seconds, 0.2..=3.0)
                             .text("Trail fade (s)"),
                     )
@@ -167,37 +151,56 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                         "How many seconds a trail takes to fade away. \
                      Higher = longer-lasting streaks.",
                     );
-                    ui.add(
-                        egui::Slider::new(&mut app.trails.dim_factor, 0.0..=1.0)
-                            .text("Background dim"),
-                    )
-                    .on_hover_text(
-                        "How dark the live picture behind the trails is. \
-                     Lower = trails stand out more.",
-                    );
 
-                    ui.separator();
-                    caption(
-                        ui,
-                        "Only moving lights trail — still-but-bright things (lamps, \
-                     windows) are kept out.",
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut app.trails.motion_sensitivity, 0.0..=1.0)
-                            .text("Motion sensitivity"),
-                    )
-                    .on_hover_text(
-                        "How much something must move to count. Higher picks up smaller \
-                     or slower movement — but also more clutter.",
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut app.trails.background_seconds, 0.5..=15.0)
-                            .text("Background adapt (s)"),
-                    )
-                    .on_hover_text(
-                        "How quickly a light that stops moving is treated as background \
-                     and stops trailing.",
-                    );
+                    // Finer tuning knobs, hidden by default to avoid confusion.
+                    ui.collapsing("Advanced", |ui| {
+                        ui.add(
+                            egui::Slider::new(&mut app.trails.threshold, 0.0..=1.0)
+                                .text("Brightness threshold"),
+                        )
+                        .on_hover_text(
+                            "How bright something must be before it leaves a trail. \
+                         Higher = only the brightest lights trail.",
+                        );
+                        ui.add(
+                            egui::Slider::new(&mut app.trails.intensity_gain, 0.1..=2.0)
+                                .text("Brightness boost"),
+                        )
+                        .on_hover_text(
+                            "Makes trails glow brighter than the original light. \
+                         Turn up if trails look too dim.",
+                        );
+                        ui.add(
+                            egui::Slider::new(&mut app.trails.dim_factor, 0.0..=1.0)
+                                .text("Background dim"),
+                        )
+                        .on_hover_text(
+                            "How dark the live picture behind the trails is. \
+                         Lower = trails stand out more.",
+                        );
+
+                        caption(
+                            ui,
+                            "Only moving lights trail — still-but-bright things (lamps, \
+                         windows) are kept out.",
+                        );
+                        ui.add(
+                            egui::Slider::new(&mut app.trails.motion_sensitivity, 0.0..=1.0)
+                                .text("Motion sensitivity"),
+                        )
+                        .on_hover_text(
+                            "How much something must move to count. Higher picks up smaller \
+                         or slower movement — but also more clutter.",
+                        );
+                        ui.add(
+                            egui::Slider::new(&mut app.trails.background_seconds, 0.5..=15.0)
+                                .text("Background adapt (s)"),
+                        )
+                        .on_hover_text(
+                            "How quickly a light that stops moving is treated as background \
+                         and stops trailing.",
+                        );
+                    });
                 }
 
                 ui.separator();
