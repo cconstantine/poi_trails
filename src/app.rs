@@ -60,7 +60,6 @@ struct Settings {
     intensity_gain: f32,
     fade_seconds: f32,
     dim_factor: f32,
-    motion_gate: bool,
     motion_sensitivity: f32,
     background_seconds: f32,
     delay_seconds: f32,
@@ -77,7 +76,6 @@ impl Default for Settings {
             intensity_gain: DEFAULT_INTENSITY_GAIN,
             fade_seconds: DEFAULT_FADE_SECONDS,
             dim_factor: DEFAULT_DIM_FACTOR,
-            motion_gate: DEFAULT_MOTION_GATE,
             motion_sensitivity: DEFAULT_MOTION_SENSITIVITY,
             background_seconds: DEFAULT_BACKGROUND_SECONDS,
             delay_seconds: 0.0,
@@ -134,7 +132,8 @@ impl PoiTrailsApp {
         trails.intensity_gain = settings.intensity_gain;
         trails.fade_seconds = settings.fade_seconds;
         trails.dim_factor = settings.dim_factor;
-        trails.motion_gate = settings.motion_gate;
+        // The static-background gate is always on (no longer user-toggleable).
+        trails.motion_gate = DEFAULT_MOTION_GATE;
         trails.motion_sensitivity = settings.motion_sensitivity;
         trails.background_seconds = settings.background_seconds;
 
@@ -414,7 +413,6 @@ impl eframe::App for PoiTrailsApp {
             intensity_gain: self.trails.intensity_gain,
             fade_seconds: self.trails.fade_seconds,
             dim_factor: self.trails.dim_factor,
-            motion_gate: self.trails.motion_gate,
             motion_sensitivity: self.trails.motion_sensitivity,
             background_seconds: self.trails.background_seconds,
             delay_seconds: self.delay_seconds,

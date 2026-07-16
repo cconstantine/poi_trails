@@ -177,34 +177,27 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                     );
 
                     ui.separator();
-                    ui.checkbox(&mut app.trails.motion_gate, "Suppress static background")
-                        .on_hover_text(
-                            "Ignores parts of the scene that stay still, so only moving \
-                         lights leave trails.",
-                        );
                     caption(
                         ui,
-                        "Keeps still-but-bright things (lamps, windows) from trailing — \
-                     only movement paints.",
+                        "Only moving lights trail — still-but-bright things (lamps, \
+                     windows) are kept out.",
                     );
-                    if app.trails.motion_gate {
-                        ui.add(
-                            egui::Slider::new(&mut app.trails.motion_sensitivity, 0.0..=1.0)
-                                .text("Motion sensitivity"),
-                        )
-                        .on_hover_text(
-                            "How much something must move to count. Higher picks up smaller \
-                         or slower movement — but also more clutter.",
-                        );
-                        ui.add(
-                            egui::Slider::new(&mut app.trails.background_seconds, 0.5..=15.0)
-                                .text("Background adapt (s)"),
-                        )
-                        .on_hover_text(
-                            "How quickly a light that stops moving is treated as background \
-                         and stops trailing.",
-                        );
-                    }
+                    ui.add(
+                        egui::Slider::new(&mut app.trails.motion_sensitivity, 0.0..=1.0)
+                            .text("Motion sensitivity"),
+                    )
+                    .on_hover_text(
+                        "How much something must move to count. Higher picks up smaller \
+                     or slower movement — but also more clutter.",
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut app.trails.background_seconds, 0.5..=15.0)
+                            .text("Background adapt (s)"),
+                    )
+                    .on_hover_text(
+                        "How quickly a light that stops moving is treated as background \
+                     and stops trailing.",
+                    );
                 }
 
                 ui.separator();
