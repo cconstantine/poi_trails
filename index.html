@@ -32,6 +32,25 @@
       height: 100%;
       display: block;
     }
+    /* Stop-recording control. A DOM overlay rather than an egui widget:
+       egui draws onto the recorded canvas, so any widget would end up in
+       the clip. Shown/hidden by record.rs. */
+    #stop_recording {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.6);
+      color: #ff5252;
+      border: 1px solid #ff5252;
+      border-radius: 6px;
+      font: 14px system-ui, sans-serif;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    #stop_recording[hidden] {
+      display: none;
+    }
     /* Shown until the wasm app starts (main.rs removes it), so the first
        paint isn't a bare black page. */
     #loading {
@@ -49,6 +68,8 @@
 </head>
 <body>
   <canvas id="the_canvas_id"></canvas>
+
+  <button id="stop_recording" hidden>● 0:00 — Stop (Esc)</button>
 
   <div id="loading">
     <p id="loading_text">Loading…</p>

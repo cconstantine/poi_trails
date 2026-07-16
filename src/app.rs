@@ -111,6 +111,8 @@ pub struct PoiTrailsApp {
     #[cfg(target_arch = "wasm32")]
     camera: CameraState,
     #[cfg(target_arch = "wasm32")]
+    recorder: crate::record::Recorder,
+    #[cfg(target_arch = "wasm32")]
     pub(crate) selected_device: Option<String>,
     /// True while we've hidden controls *and* entered browser fullscreen, so we
     /// can restore the controls when the browser leaves fullscreen (e.g. Esc).
@@ -161,6 +163,8 @@ impl PoiTrailsApp {
             composite_buf: vec![0; DEFAULT_WIDTH * DEFAULT_HEIGHT * 4],
             #[cfg(target_arch = "wasm32")]
             camera,
+            #[cfg(target_arch = "wasm32")]
+            recorder: crate::record::Recorder::new(),
             #[cfg(target_arch = "wasm32")]
             selected_device: settings.selected_device.clone(),
             #[cfg(target_arch = "wasm32")]
@@ -223,6 +227,55 @@ impl PoiTrailsApp {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn is_immersive(&self) -> bool {
         false
+    }
+
+    /// Hide the controls (they'd be captured — egui draws on the recorded
+    /// canvas) and start recording. On failure the error is surfaced via
+    /// [`Self::last_clip`] and the controls stay up.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn start_recording(&mut self) {
+        self.show_controls = false;
+        self.recorder.start();
+        if !self.recorder.is_recording() {
+            self.show_controls = true;
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn is_recording(&self) -> bool {
+        self.recorder.is_recording()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn is_recording(&self) -> bool {
+        false
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn last_clip(&self) -> Option<&crate::record::LastClip> {
+        self.recorder.last_clip()
+    }
+
+    /// Per-frame recording upkeep: stop on request / time cap / lost camera or
+    /// GL context, keep the overlay's elapsed readout fresh, and restore the
+    /// controls once a recording has finished (successfully or not).
+    #[cfg(target_arch = "wasm32")]
+    fn tick_recording(&mut self) {
+        if let Some(elapsed) = self.recorder.elapsed_seconds() {
+            let camera_ok = matches!(self.camera_status(), CameraStatus::Ready);
+            if crate::record::take_stop_request()
+                || elapsed >= crate::record::MAX_CLIP_SECONDS
+                || !camera_ok
+                || crate::gpu::context_lost()
+            {
+                self.recorder.stop();
+            } else {
+                crate::record::update_stop_label(elapsed);
+            }
+        }
+        if self.recorder.poll_finished() {
+            self.show_controls = true;
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -373,6 +426,8 @@ impl PoiTrailsApp {
             self.immersive = false;
             self.show_controls = true;
         }
+
+        self.tick_recording();
 
         if matches!(self.camera_status(), CameraStatus::Ready) {
             // Upload the current frame straight to the GPU (no CPU readback),

@@ -35,7 +35,7 @@ thread_local! {
 
 const CANVAS_ID: &str = "the_canvas_id";
 
-fn context_lost() -> bool {
+pub fn context_lost() -> bool {
     CONTEXT_LOST.with(|c| c.get())
 }
 

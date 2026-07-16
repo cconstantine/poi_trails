@@ -40,7 +40,9 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
     // In real fullscreen the view is just the video — no restore button; the
     // user exits with Esc (which brings the controls back). Only offer the
     // floating button when controls were hidden *without* going fullscreen.
-    if !app.show_controls && !app.is_immersive() {
+    // While recording, no egui chrome at all — it would be captured in the
+    // clip; the DOM stop button (outside the canvas pixels) is the way back.
+    if !app.show_controls && !app.is_immersive() && !app.is_recording() {
         // A single unobtrusive button, floating top-right, to bring everything
         // back. Always reachable even after the browser drops fullscreen.
         egui::Area::new(egui::Id::new("restore_controls"))
@@ -106,6 +108,10 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
                         app.show_controls = false;
                     }
                 });
+
+                #[cfg(target_arch = "wasm32")]
+                draw_record_controls(app, ui);
+
                 ui.separator();
 
                 #[cfg(target_arch = "wasm32")]
@@ -245,6 +251,51 @@ pub fn draw(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             draw_video(app, ui);
         });
+}
+
+/// The "Record clip" button plus the outcome of the last recording. The clip
+/// captures the clean, controls-hidden view; stopping is via the DOM overlay
+/// button so it never appears in the recording.
+#[cfg(target_arch = "wasm32")]
+fn draw_record_controls(app: &mut PoiTrailsApp, ui: &mut egui::Ui) {
+    use crate::record::{LastClip, MAX_CLIP_SECONDS};
+
+    let camera_ready = matches!(app.camera_status(), CameraStatus::Ready);
+    if ui
+        .add_enabled(camera_ready, egui::Button::new("● Record clip"))
+        .on_hover_text(format!(
+            "Hide these controls and record the view to a video file \
+             (up to {MAX_CLIP_SECONDS:.0} s). Stop with the Esc key — the \
+             mouse can stay right here for the next take — or the button \
+             in the top-left corner.",
+        ))
+        .on_disabled_hover_text("Enable the camera first.")
+        .clicked()
+    {
+        app.start_recording();
+    }
+
+    match app.last_clip() {
+        Some(LastClip::Saved {
+            filename,
+            seconds,
+            bytes,
+        }) => caption(
+            ui,
+            &format!(
+                "Saved {filename} ({seconds:.0} s, {:.1} MB).",
+                bytes / (1024.0 * 1024.0)
+            ),
+        ),
+        Some(LastClip::Error(msg)) => {
+            ui.label(
+                egui::RichText::new(format!("Recording failed: {msg}"))
+                    .small()
+                    .color(egui::Color32::RED),
+            );
+        }
+        None => {}
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

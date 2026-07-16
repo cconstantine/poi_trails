@@ -10,6 +10,8 @@ mod camera;
 mod fullscreen;
 #[cfg(target_arch = "wasm32")]
 mod gpu;
+#[cfg(target_arch = "wasm32")]
+mod record;
 
 /// The static "Loading…" placeholder from index.html, shown until the app
 /// starts (or repurposed as an error notice if it can't).
